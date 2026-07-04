@@ -660,6 +660,8 @@ def classify_capture_error(output: str) -> str:
     lowered = output.lower()
     if "not authorized" in lowered or "not allowed" in lowered:
         return "automation-blocked"
+    if "javascript through applescript is turned off" in lowered or "allow javascript from apple events" in lowered:
+        return "javascript-events-disabled"
     if "javascript" in lowered:
         return "javascript-blocked"
     return "capture-failed"

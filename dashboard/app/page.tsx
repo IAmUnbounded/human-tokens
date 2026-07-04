@@ -125,6 +125,22 @@ const CATEGORY_LABEL: Record<string, string> = {
   idle: "Idle",
 };
 
+const CAPTURE_STATUS_LABEL: Record<string, string> = {
+  "text-ok": "Text captured",
+  "meta-ok": "Metadata only",
+  "meta-only": "Metadata only",
+  "javascript-events-disabled+meta-only": "Enable JavaScript from Apple Events",
+  "javascript-blocked+meta-only": "JavaScript capture blocked",
+  "automation-blocked": "Automation permission blocked",
+  "automation-blocked+meta-only": "Automation permission blocked",
+  "capture-failed": "Capture failed",
+  "capture-failed+meta-only": "Capture failed",
+};
+
+function captureStatusLabel(status: string) {
+  return CAPTURE_STATUS_LABEL[status] ?? (status || "waiting");
+}
+
 function CategoryBadge({ cat }: { cat: string }) {
   const color = CATEGORY_COLOR[cat] ?? "#9ca3af";
   return (
@@ -237,18 +253,18 @@ function AppRow({ app, maxSeconds }: { app: AppStat; maxSeconds: number }) {
         : app.window_title || CATEGORY_LABEL[app.category] || app.category;
 
   return (
-    <div className="grid grid-cols-[minmax(0,1.2fr)_minmax(120px,1fr)_74px_78px] items-center gap-3 py-3 max-sm:grid-cols-[1fr_72px]">
+    <div className="grid grid-cols-[minmax(0,1fr)_70px_76px] items-center gap-x-3 gap-y-2 py-3 max-sm:grid-cols-[minmax(0,1fr)_72px]">
       <div className="min-w-0">
         <p className="truncate text-sm text-stone-200">{app.display_name}</p>
         <p className="truncate text-[11px] text-stone-500">{detail}</p>
-      </div>
-      <div className="h-2.5 overflow-hidden rounded-full bg-surface-border max-sm:order-3 max-sm:col-span-2">
-        <div className="h-full rounded-full" style={{ width: `${pct}%`, background: color }} />
       </div>
       <p className="text-right text-xs text-stone-400">{fmtTime(app.totalSeconds)}</p>
       <p className="text-right text-xs" style={{ color: dominant === "out" ? "#2fbf71" : "#3aa7ff" }}>
         {fmt(tokenValue)} {dominant}
       </p>
+      <div className="col-span-3 h-2.5 overflow-hidden rounded-full bg-surface-border max-sm:col-span-2">
+        <div className="h-full rounded-full" style={{ width: `${pct}%`, background: color }} />
+      </div>
     </div>
   );
 }
@@ -308,6 +324,7 @@ function CaptureRow({ capture }: { capture: CaptureStat }) {
     capture.source_host && capture.window_title
       ? `${capture.app_name} · ${capture.source_host}`
       : capture.app_name;
+  const status = captureStatusLabel(capture.status);
   return (
     <div className="border-t border-surface-border py-3 first:border-t-0">
       <div className="flex items-center gap-3">
@@ -316,11 +333,16 @@ function CaptureRow({ capture }: { capture: CaptureStat }) {
           <p className="truncate text-sm text-stone-200">{source}</p>
           <p className="truncate text-[11px] text-stone-500">{detail}</p>
         </div>
-        <p className="shrink-0 text-xs text-input">{fmt(capture.input_tokens)} in</p>
+        <p
+          className="shrink-0 text-right text-xs"
+          style={{ color: capture.input_tokens > 0 ? "#3aa7ff" : "#f2a93b" }}
+        >
+          {capture.input_tokens > 0 ? `${fmt(capture.input_tokens)} in` : status}
+        </p>
       </div>
-      {capture.text_excerpt && (
-        <p className="mt-1 line-clamp-2 text-xs leading-5 text-stone-500">{capture.text_excerpt}</p>
-      )}
+      <p className="mt-1 line-clamp-2 text-xs leading-5 text-stone-500">
+        {capture.text_excerpt || status}
+      </p>
     </div>
   );
 }
@@ -360,6 +382,13 @@ export default function Dashboard() {
   );
   const outputTrackingLikelyOff =
     !!stats && stats.dbExists && stats.totalSeconds > 1800 && stats.keystrokesTotal === 0;
+  const captureSetupBlocked =
+    !!stats &&
+    stats.captureHealth.captureCount > 0 &&
+    stats.captureHealth.capturedTextTokens === 0 &&
+    Object.keys(stats.captureHealth.statusCounts).some((status) =>
+      status.includes("javascript-events-disabled") || status.includes("javascript-blocked"),
+    );
 
   return (
     <main className="min-h-screen bg-surface px-4 py-5 text-stone-200 sm:px-6 lg:px-8">
@@ -411,6 +440,19 @@ export default function Dashboard() {
           </section>
         )}
 
+        {captureSetupBlocked && (
+          <section className="mb-5 rounded-lg border border-amber-700/60 bg-amber-950/20 p-5">
+            <p className="text-sm font-medium text-amber-300">Browser text capture is blocked</p>
+            <p className="mt-2 text-xs leading-5 text-amber-200/70">
+              Chrome is sharing tab titles and URLs, but not page text. In Chrome, enable{" "}
+              <code className="rounded bg-black/30 px-1.5 py-0.5">
+                View &gt; Developer &gt; Allow JavaScript from Apple Events
+              </code>
+              , then restart or wait for the tracker to capture again.
+            </p>
+          </section>
+        )}
+
         {stats?.currentApp && (
           <div className="mb-5">
             <LiveIndicator app={stats.currentApp} />
@@ -458,7 +500,7 @@ export default function Dashboard() {
                 <StatCard
                   label="Captures"
                   value={fmt(stats.captureHealth.captureCount)}
-                  sub={stats.captureHealth.lastCaptureStatus || "waiting"}
+                  sub={captureStatusLabel(stats.captureHealth.lastCaptureStatus)}
                   color="#d94fb8"
                 />
               </div>
@@ -565,7 +607,7 @@ export default function Dashboard() {
                   </div>
                 ) : (
                   <div className="rounded-md border border-dashed border-surface-border p-4 text-sm text-stone-500">
-                    No visible browser text captured in this period.
+                    No browser capture attempts in this period.
                   </div>
                 )}
               </div>

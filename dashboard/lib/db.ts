@@ -271,7 +271,7 @@ export function getStats(periodStart: number, periodEnd: number): StatsResult {
           `
           SELECT captured_at, app_name, window_title, source_host, input_tokens, text_excerpt, status
           FROM captures
-          WHERE captured_at >= ? AND captured_at < ? AND input_tokens > 0
+          WHERE captured_at >= ? AND captured_at < ?
           ORDER BY captured_at DESC
           LIMIT 12
           `,

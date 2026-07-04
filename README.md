@@ -28,6 +28,16 @@ npm run dev
 npm run report
 ```
 
+## Browser Text Capture
+
+Chrome-based browsers need JavaScript execution from Apple Events for visible text capture. If the dashboard shows capture attempts but `0` visible text, enable:
+
+```text
+View > Developer > Allow JavaScript from Apple Events
+```
+
+The tracker can still record browser app, tab title, and URL without this setting, but page text tokens require it.
+
 ## Star History
 
 <a href="https://star-history.com/#IAmUnbounded/human-tokens&Date">
