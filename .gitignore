@@ -16,6 +16,7 @@ npm-debug.log*
 # Local runtime state
 data/*.db
 data/*.db.*
+data/*.db-*
 logs/
 reports/*.md
 output/
