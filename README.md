@@ -38,6 +38,20 @@ View > Developer > Allow JavaScript from Apple Events
 
 The tracker can still record browser app, tab title, and URL without this setting, but page text tokens require it.
 
+## Effective Work Output
+
+Mouse-heavy creative work can produce output even when keystrokes are low. The tracker now counts active Premiere Pro editing time as output tokens when there has been recent keyboard or mouse input.
+
+Environment options:
+
+```bash
+HUMAN_TOKENS_EFFECTIVE_WORK=1
+HUMAN_TOKENS_PREMIERE_OUTPUT_TOKENS_PER_MINUTE=80
+HUMAN_TOKENS_EFFECTIVE_WORK_RECENT_INPUT_SECONDS=20
+```
+
+Set `HUMAN_TOKENS_EFFECTIVE_WORK=0` to disable this mode.
+
 ## Star History
 
 <a href="https://star-history.com/#IAmUnbounded/human-tokens&Date">

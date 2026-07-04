@@ -380,8 +380,19 @@ export default function Dashboard() {
     (sum, value) => sum + value,
     0,
   );
+  const typedOutputEstimate = Math.round((stats?.keystrokesTotal ?? 0) * 0.25);
+  const effectiveOutputTokens = Math.max(0, (stats?.outputTokens ?? 0) - typedOutputEstimate);
+  const outputSub = stats
+    ? effectiveOutputTokens > 0
+      ? `${stats.keystrokesTotal.toLocaleString()} keystrokes + ${fmt(effectiveOutputTokens)} effective`
+      : `${stats.keystrokesTotal.toLocaleString()} keystrokes`
+    : "";
   const outputTrackingLikelyOff =
-    !!stats && stats.dbExists && stats.totalSeconds > 1800 && stats.keystrokesTotal === 0;
+    !!stats &&
+    stats.dbExists &&
+    stats.totalSeconds > 1800 &&
+    stats.keystrokesTotal === 0 &&
+    stats.outputTokens === 0;
   const captureSetupBlocked =
     !!stats &&
     stats.captureHealth.captureCount > 0 &&
@@ -465,7 +476,7 @@ export default function Dashboard() {
               <StatCard
                 label="Output"
                 value={fmt(stats.outputTokens)}
-                sub={`${stats.keystrokesTotal.toLocaleString()} keystrokes`}
+                sub={outputSub}
                 color="#2fbf71"
               />
               <StatCard

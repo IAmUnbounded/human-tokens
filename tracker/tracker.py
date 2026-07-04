@@ -24,6 +24,7 @@ import datetime as dt
 import hashlib
 import io
 import json
+import os
 import re
 import signal
 import sqlite3
@@ -170,6 +171,25 @@ TOKEN_RATES: dict[str, tuple[int, int]] = {
     "idle": (0, 0),
 }
 
+EFFECTIVE_WORK_ENABLED = os.environ.get("HUMAN_TOKENS_EFFECTIVE_WORK", "1").lower() not in {
+    "0",
+    "false",
+    "no",
+    "off",
+}
+EFFECTIVE_WORK_RECENT_INPUT_SECONDS = int(
+    os.environ.get("HUMAN_TOKENS_EFFECTIVE_WORK_RECENT_INPUT_SECONDS", "20")
+)
+PREMIERE_OUTPUT_TOKENS_PER_MINUTE = float(
+    os.environ.get("HUMAN_TOKENS_PREMIERE_OUTPUT_TOKENS_PER_MINUTE", "80")
+)
+
+PREMIERE_APPS = {
+    "Adobe Premiere",
+    "Premiere Pro",
+    "Adobe Premiere Pro",
+}
+
 AI_APPS = {
     "Claude",
     "ChatGPT",
@@ -245,7 +265,9 @@ CREATING_APPS = {
     "Ableton Live",
     "Final Cut Pro",
     "DaVinci Resolve",
+    "Adobe Premiere",
     "Premiere Pro",
+    "Adobe Premiere Pro",
 }
 
 BROWSER_APPS = {
@@ -507,6 +529,7 @@ class Session:
     last_capture_at: int = 0
     last_text_capture_ok_at: int = 0
     output_float: float = 0.0
+    effective_output_float: float = 0.0
     rate_input_float: float = 0.0
 
 
@@ -552,6 +575,18 @@ def host_from_url(url: str) -> str:
 
 def host_matches(host: str, candidates: set[str]) -> bool:
     return any(host == candidate or host.endswith("." + candidate) for candidate in candidates)
+
+
+def app_matches(app_name: str, candidates: set[str]) -> bool:
+    return any(app_name == candidate or app_name.startswith(candidate + " ") for candidate in candidates)
+
+
+def effective_output_rate(app_name: str, category: str) -> float:
+    if not EFFECTIVE_WORK_ENABLED or category != "creating":
+        return 0.0
+    if app_matches(app_name, PREMIERE_APPS):
+        return PREMIERE_OUTPUT_TOKENS_PER_MINUTE
+    return 0.0
 
 
 def get_active_window() -> tuple[str, str]:
@@ -761,7 +796,7 @@ def classify(app_name: str, window_title: str, source_url: str = "") -> str:
 
     if app_name in AI_APPS:
         return "ai"
-    if app_name in CREATING_APPS:
+    if app_name in CREATING_APPS or app_matches(app_name, PREMIERE_APPS):
         return "creating"
     if app_name in CONSUMING_APPS:
         return CONSUMING_APPS[app_name]
@@ -1024,6 +1059,14 @@ def print_startup() -> None:
         "  keystrokes    : "
         + ("ok" if KEYSTROKE_TRACKING else "limited; grant Accessibility for output tokens")
     )
+    print(
+        "  effective work: "
+        + (
+            f"ok; Premiere Pro at {PREMIERE_OUTPUT_TOKENS_PER_MINUTE:g} output tokens/min"
+            if EFFECTIVE_WORK_ENABLED
+            else "disabled"
+        )
+    )
     print("  browser text  : via browser Automation permission when available")
     print("  stop          : Ctrl+C")
     print()
@@ -1105,8 +1148,9 @@ def main() -> None:
         else:
             last_video_playing = None
 
+        system_idle = system_idle_seconds()
         confirmed_playing_video = category == "video" and last_video_playing is True
-        if system_idle_seconds() >= IDLE_THRESHOLD and not confirmed_playing_video:
+        if system_idle >= IDLE_THRESHOLD and not confirmed_playing_video:
             category = "idle"
 
         if current is None or session_key(
@@ -1138,7 +1182,10 @@ def main() -> None:
         current.category = category
         current.keystrokes += ks
         current.duration += POLL_INTERVAL
-        current.output_float = current.keystrokes * 0.25
+        output_rate = effective_output_rate(current.app, current.category)
+        if output_rate > 0 and system_idle <= EFFECTIVE_WORK_RECENT_INPUT_SECONDS:
+            current.effective_output_float += output_rate * (POLL_INTERVAL / 60)
+        current.output_float = (current.keystrokes * 0.25) + current.effective_output_float
         current.output_tokens = int(round(current.output_float))
 
         if ks == 0:
