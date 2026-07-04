@@ -76,6 +76,13 @@ type Stats = {
   dbExists: boolean;
 };
 
+type TrackerState = {
+  running: boolean;
+  mode: "launchagent" | "pidfile" | "stopped";
+  pid: number | null;
+  detail: string;
+};
+
 function fmt(n: number) {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
   if (n >= 1_000) return `${(n / 1_000).toFixed(1)}k`;
@@ -347,10 +354,56 @@ function CaptureRow({ capture }: { capture: CaptureStat }) {
   );
 }
 
+function TrackerControl({
+  tracker,
+  busy,
+  onAction,
+}: {
+  tracker: TrackerState | null;
+  busy: boolean;
+  onAction: (action: "start" | "stop") => void;
+}) {
+  const running = tracker?.running ?? false;
+  const action = running ? "stop" : "start";
+  const label = running ? "Stop" : "Resume";
+  const color = running ? "#2fbf71" : "#f2a93b";
+  const detail = tracker
+    ? tracker.pid
+      ? `${tracker.detail} · pid ${tracker.pid}`
+      : tracker.detail
+    : "Checking tracker";
+
+  return (
+    <div className="flex min-h-10 w-full items-center gap-3 rounded-lg border border-surface-border bg-surface-card px-3 py-2 sm:w-auto">
+      <span className="flex items-center gap-2">
+        <span className="h-2.5 w-2.5 rounded-full" style={{ background: color }} />
+        <span className="text-xs font-medium text-stone-200">
+          Tracker {running ? "running" : "stopped"}
+        </span>
+      </span>
+      <span className="min-w-0 flex-1 truncate text-[11px] text-stone-500 sm:max-w-60">{detail}</span>
+      <button
+        type="button"
+        disabled={busy || !tracker}
+        onClick={() => onAction(action)}
+        className={`h-8 shrink-0 rounded-md border px-3 text-xs font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
+          running
+            ? "border-red-900/70 text-red-300 hover:border-red-700 hover:bg-red-950/30"
+            : "border-emerald-900/70 text-emerald-300 hover:border-emerald-700 hover:bg-emerald-950/30"
+        }`}
+      >
+        {busy ? "Working" : label}
+      </button>
+    </div>
+  );
+}
+
 export default function Dashboard() {
   const [stats, setStats] = useState<Stats | null>(null);
+  const [tracker, setTracker] = useState<TrackerState | null>(null);
   const [period, setPeriod] = useState<"today" | "24h" | "week">("today");
   const [lastUpdate, setLastUpdate] = useState<Date | null>(null);
+  const [trackerBusy, setTrackerBusy] = useState(false);
 
   const fetchStats = useCallback(async () => {
     try {
@@ -363,11 +416,46 @@ export default function Dashboard() {
     }
   }, [period]);
 
+  const fetchTracker = useCallback(async () => {
+    try {
+      const response = await fetch("/api/tracker");
+      const data = (await response.json()) as TrackerState;
+      setTracker(data);
+    } catch {
+      setTracker({ running: false, mode: "stopped", pid: null, detail: "Status unavailable" });
+    }
+  }, []);
+
+  const controlTracker = useCallback(
+    async (action: "start" | "stop") => {
+      setTrackerBusy(true);
+      try {
+        const response = await fetch("/api/tracker", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action }),
+        });
+        const data = (await response.json()) as TrackerState;
+        setTracker(data);
+        await fetchStats();
+      } finally {
+        setTrackerBusy(false);
+      }
+    },
+    [fetchStats],
+  );
+
   useEffect(() => {
     fetchStats();
     const id = setInterval(fetchStats, 10_000);
     return () => clearInterval(id);
   }, [fetchStats]);
+
+  useEffect(() => {
+    fetchTracker();
+    const id = setInterval(fetchTracker, 10_000);
+    return () => clearInterval(id);
+  }, [fetchTracker]);
 
   const today = new Date().toLocaleDateString("en-US", {
     weekday: "long",
@@ -404,27 +492,30 @@ export default function Dashboard() {
   return (
     <main className="min-h-screen bg-surface px-4 py-5 text-stone-200 sm:px-6 lg:px-8">
       <div className="mx-auto max-w-7xl">
-        <header className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+        <header className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
           <div>
             <h1 className="text-2xl font-semibold tracking-tight text-stone-50 sm:text-3xl">
               Human Tokens
             </h1>
             <p className="mt-1 text-sm text-stone-500">{today}</p>
           </div>
-          <div className="flex w-full gap-2 sm:w-auto">
-            {(["today", "24h", "week"] as const).map((item) => (
-              <button
-                key={item}
-                onClick={() => setPeriod(item)}
-                className={`h-9 flex-1 rounded-md border px-3 text-xs font-medium transition-colors sm:flex-none ${
-                  period === item
-                    ? "border-stone-500 bg-stone-700/40 text-stone-100"
-                    : "border-surface-border text-stone-500 hover:border-stone-600 hover:text-stone-300"
-                }`}
-              >
-                {item === "today" ? "Today" : item === "24h" ? "24 hours" : "7 days"}
-              </button>
-            ))}
+          <div className="flex w-full flex-col gap-2 sm:w-auto sm:items-end">
+            <TrackerControl tracker={tracker} busy={trackerBusy} onAction={controlTracker} />
+            <div className="flex w-full gap-2 sm:w-auto">
+              {(["today", "24h", "week"] as const).map((item) => (
+                <button
+                  key={item}
+                  onClick={() => setPeriod(item)}
+                  className={`h-9 flex-1 rounded-md border px-3 text-xs font-medium transition-colors sm:flex-none ${
+                    period === item
+                      ? "border-stone-500 bg-stone-700/40 text-stone-100"
+                      : "border-surface-border text-stone-500 hover:border-stone-600 hover:text-stone-300"
+                  }`}
+                >
+                  {item === "today" ? "Today" : item === "24h" ? "24 hours" : "7 days"}
+                </button>
+              ))}
+            </div>
           </div>
         </header>
 
