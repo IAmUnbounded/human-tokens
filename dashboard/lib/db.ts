@@ -26,6 +26,7 @@ export type AppStat = {
   key: string;
   app_name: string;
   display_name: string;
+  window_title: string;
   source_host: string;
   category: string;
   totalSeconds: number;
@@ -45,6 +46,7 @@ export type HourlyStat = {
 export type CaptureStat = {
   captured_at: number;
   app_name: string;
+  window_title: string;
   source_host: string;
   input_tokens: number;
   text_excerpt: string;
@@ -83,6 +85,7 @@ export type StatsResult = {
   currentApp: {
     app_name: string;
     display_name: string;
+    window_title: string;
     category: string;
     source_host: string;
     seconds: number;
@@ -144,6 +147,10 @@ function computeSessionTokens(session: SessionRow) {
     numberValue(session.duration_seconds),
     numberValue(session.keystrokes),
   );
+}
+
+function cleanTitle(title: string | null | undefined) {
+  return (title ?? "").replace(/\s+/g, " ").trim();
 }
 
 function openDB() {
@@ -262,7 +269,7 @@ export function getStats(periodStart: number, periodEnd: number): StatsResult {
     ? (db
         .prepare(
           `
-          SELECT captured_at, app_name, source_host, input_tokens, text_excerpt, status
+          SELECT captured_at, app_name, window_title, source_host, input_tokens, text_excerpt, status
           FROM captures
           WHERE captured_at >= ? AND captured_at < ? AND input_tokens > 0
           ORDER BY captured_at DESC
@@ -307,8 +314,9 @@ export function getStats(periodStart: number, periodEnd: number): StatsResult {
     const keystrokes = numberValue(session.keystrokes);
     const tokens = computeSessionTokens(session);
     const host = session.source_host ?? "";
-    const appKey = `${session.app_name}|${host}|${session.category}`;
-    const displayName = host || session.app_name;
+    const windowTitle = cleanTitle(session.window_title);
+    const appKey = `${session.app_name}|${host}|${windowTitle}|${session.category}`;
+    const displayName = windowTitle || host || session.app_name;
 
     outputTokens += tokens.outputTokens;
     inputTokens += tokens.inputTokens;
@@ -351,6 +359,7 @@ export function getStats(periodStart: number, periodEnd: number): StatsResult {
         key: appKey,
         app_name: session.app_name,
         display_name: displayName,
+        window_title: windowTitle,
         source_host: host,
         category: session.category,
         totalSeconds: duration,
@@ -391,10 +400,12 @@ export function getStats(periodStart: number, periodEnd: number): StatsResult {
   const hourly = Array.from(hourMap.values()).sort((a, b) => a.hour - b.hour);
 
   const liveHost = live?.source_host ?? "";
+  const liveTitle = cleanTitle(live?.window_title);
   const currentApp = live
     ? {
         app_name: live.app_name,
-        display_name: liveHost || live.app_name,
+        display_name: liveTitle || liveHost || live.app_name,
+        window_title: liveTitle,
         category: live.category,
         source_host: liveHost,
         seconds: Math.floor(Date.now() / 1000) - live.started_at,

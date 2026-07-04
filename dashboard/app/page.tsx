@@ -15,6 +15,7 @@ type AppStat = {
   key: string;
   app_name: string;
   display_name: string;
+  window_title: string;
   source_host: string;
   category: string;
   totalSeconds: number;
@@ -37,6 +38,7 @@ type CategoryStat = {
 type CaptureStat = {
   captured_at: number;
   app_name: string;
+  window_title: string;
   source_host: string;
   input_tokens: number;
   text_excerpt: string;
@@ -66,6 +68,7 @@ type Stats = {
   currentApp: {
     app_name: string;
     display_name: string;
+    window_title: string;
     category: string;
     source_host: string;
     seconds: number;
@@ -196,6 +199,11 @@ function TokenBalance({
 
 function LiveIndicator({ app }: { app: NonNullable<Stats["currentApp"]> }) {
   const color = CATEGORY_COLOR[app.category] ?? "#9ca3af";
+  const detail =
+    app.source_host && app.window_title
+      ? `${app.app_name} · ${app.source_host}`
+      : app.source_host || app.app_name;
+
   return (
     <div className="flex min-h-12 items-center gap-3 rounded-lg border border-surface-border bg-surface-card px-4 py-3">
       <span className="relative flex h-2.5 w-2.5">
@@ -206,9 +214,12 @@ function LiveIndicator({ app }: { app: NonNullable<Stats["currentApp"]> }) {
         <span className="relative inline-flex h-2.5 w-2.5 rounded-full" style={{ background: color }} />
       </span>
       <span className="text-xs text-stone-500">Live</span>
-      <span className="min-w-0 truncate text-sm font-medium text-stone-100">{app.display_name}</span>
+      <span className="min-w-0 flex-1">
+        <span className="block truncate text-sm font-medium text-stone-100">{app.display_name}</span>
+        <span className="block truncate text-[11px] text-stone-500">{detail}</span>
+      </span>
       <CategoryBadge cat={app.category} />
-      <span className="ml-auto text-xs text-stone-500">{fmtTime(app.seconds)}</span>
+      <span className="shrink-0 text-xs text-stone-500">{fmtTime(app.seconds)}</span>
     </div>
   );
 }
@@ -218,14 +229,18 @@ function AppRow({ app, maxSeconds }: { app: AppStat; maxSeconds: number }) {
   const color = CATEGORY_COLOR[app.category] ?? "#9ca3af";
   const dominant = app.outputTokens >= app.inputTokens ? "out" : "in";
   const tokenValue = dominant === "out" ? app.outputTokens : app.inputTokens;
+  const detail =
+    app.source_host && app.window_title
+      ? `${app.app_name} · ${app.source_host}`
+      : app.source_host
+        ? app.app_name
+        : app.window_title || CATEGORY_LABEL[app.category] || app.category;
 
   return (
     <div className="grid grid-cols-[minmax(0,1.2fr)_minmax(120px,1fr)_74px_78px] items-center gap-3 py-3 max-sm:grid-cols-[1fr_72px]">
       <div className="min-w-0">
         <p className="truncate text-sm text-stone-200">{app.display_name}</p>
-        <p className="truncate text-[11px] text-stone-500">
-          {app.source_host ? app.app_name : CATEGORY_LABEL[app.category] ?? app.category}
-        </p>
+        <p className="truncate text-[11px] text-stone-500">{detail}</p>
       </div>
       <div className="h-2.5 overflow-hidden rounded-full bg-surface-border max-sm:order-3 max-sm:col-span-2">
         <div className="h-full rounded-full" style={{ width: `${pct}%`, background: color }} />
@@ -288,12 +303,19 @@ function CategoryMix({
 }
 
 function CaptureRow({ capture }: { capture: CaptureStat }) {
-  const source = capture.source_host || capture.app_name;
+  const source = capture.window_title || capture.source_host || capture.app_name;
+  const detail =
+    capture.source_host && capture.window_title
+      ? `${capture.app_name} · ${capture.source_host}`
+      : capture.app_name;
   return (
     <div className="border-t border-surface-border py-3 first:border-t-0">
       <div className="flex items-center gap-3">
         <p className="w-16 shrink-0 text-xs text-stone-500">{fmtClock(capture.captured_at)}</p>
-        <p className="min-w-0 flex-1 truncate text-sm text-stone-200">{source}</p>
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-sm text-stone-200">{source}</p>
+          <p className="truncate text-[11px] text-stone-500">{detail}</p>
+        </div>
         <p className="shrink-0 text-xs text-input">{fmt(capture.input_tokens)} in</p>
       </div>
       {capture.text_excerpt && (

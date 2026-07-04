@@ -989,8 +989,9 @@ def save_session(conn: sqlite3.Connection, session: Session, ended_at: int | Non
     conn.commit()
 
 
-def session_key(app: str, category: str, source_host: str) -> tuple[str, str, str]:
-    return app, category, source_host
+def session_key(app: str, category: str, source_host: str, window_title: str) -> tuple[str, str, str, str]:
+    title_key = re.sub(r"\s+", " ", window_title).strip() if app in BROWSER_APPS else ""
+    return app, category, source_host, title_key
 
 
 def write_report_if_available(day: str) -> None:
@@ -1072,10 +1073,16 @@ def main() -> None:
 
         browser_ctx = last_browser_ctx
         ran_browser_capture = False
-        browser_capture_due = now - last_browser_ctx.captured_at >= CAPTURE_INTERVAL
         app_changed = current is None or app != current.app
+        browser_title_changed = (
+            app in BROWSER_APPS
+            and current is not None
+            and window_title
+            and window_title != current.title
+        )
+        browser_capture_due = now - last_browser_ctx.captured_at >= CAPTURE_INTERVAL
         should_run_browser_capture = app in BROWSER_APPS and (
-            browser_capture_due or app_changed
+            browser_capture_due or app_changed or browser_title_changed
         )
         if should_run_browser_capture:
             browser_ctx = capture_browser_context(app, include_text=True)
@@ -1100,8 +1107,10 @@ def main() -> None:
         if system_idle_seconds() >= IDLE_THRESHOLD and not confirmed_playing_video:
             category = "idle"
 
-        if current is None or session_key(current.app, current.category, current.source_host) != session_key(
-            app, category, source_host
+        if current is None or session_key(
+            current.app, current.category, current.source_host, current.title
+        ) != session_key(
+            app, category, source_host, title
         ):
             if current:
                 save_session(conn, current, now)
@@ -1117,6 +1126,8 @@ def main() -> None:
             label = f"{app} [{category}]"
             if source_host:
                 label += f" {source_host}"
+            if app in BROWSER_APPS and title:
+                label += f" — {title[:80]}"
             print(f"  {time.strftime('%H:%M:%S')}  {label}")
 
         current.title = title
