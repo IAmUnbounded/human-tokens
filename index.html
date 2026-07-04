@@ -1,0 +1,611 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta
+      name="description"
+      content="Human Tokens is a local-first tracker for understanding the balance between what you create and what you consume."
+    />
+    <link
+      rel="icon"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='12' fill='%230f100e'/%3E%3Cpath d='M14 18h8v28h-8V18Zm28 0h8v28h-8V34H28v12h-8V18h8v10h14V18Z' fill='%232fbf71'/%3E%3C/svg%3E"
+    />
+    <title>Human Tokens</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        --ink: #f2eee6;
+        --muted: #a49e92;
+        --dim: #6f6a61;
+        --line: #34342f;
+        --panel: #171816;
+        --panel-strong: #1e211c;
+        --bg: #0f100e;
+        --green: #2fbf71;
+        --blue: #39a6ff;
+        --amber: #f0ad3d;
+        --pink: #d94fb8;
+        --red: #e25545;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html {
+        scroll-behavior: smooth;
+      }
+
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--ink);
+        font-family: ui-monospace, "SFMono-Regular", Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+        letter-spacing: 0;
+      }
+
+      a {
+        color: inherit;
+        text-decoration: none;
+      }
+
+      img {
+        display: block;
+        max-width: 100%;
+      }
+
+      .hero {
+        position: relative;
+        min-height: 86svh;
+        overflow: hidden;
+        display: grid;
+        align-items: end;
+      }
+
+      .hero::after {
+        content: "";
+        position: absolute;
+        inset: 0;
+        background:
+          linear-gradient(90deg, rgba(15, 16, 14, 0.96) 0%, rgba(15, 16, 14, 0.7) 48%, rgba(15, 16, 14, 0.42) 100%),
+          linear-gradient(0deg, rgba(15, 16, 14, 0.96) 0%, rgba(15, 16, 14, 0.18) 44%, rgba(15, 16, 14, 0.72) 100%);
+      }
+
+      .hero-image {
+        position: absolute;
+        inset: 0;
+      }
+
+      .hero-image img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        object-position: center top;
+        filter: saturate(0.95) brightness(0.72);
+      }
+
+      .nav {
+        position: absolute;
+        z-index: 3;
+        top: 0;
+        left: 0;
+        right: 0;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 24px;
+        padding: 22px 32px;
+      }
+
+      .brand {
+        font-size: 0.92rem;
+        color: var(--ink);
+        font-weight: 700;
+      }
+
+      .nav-links {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+
+      .nav-link,
+      .button {
+        display: inline-flex;
+        min-height: 40px;
+        align-items: center;
+        justify-content: center;
+        border: 1px solid rgba(242, 238, 230, 0.2);
+        border-radius: 8px;
+        padding: 0 14px;
+        color: var(--ink);
+        background: rgba(15, 16, 14, 0.48);
+        font-size: 0.78rem;
+        font-weight: 700;
+        transition:
+          border-color 160ms ease,
+          background 160ms ease,
+          transform 160ms ease;
+      }
+
+      .nav-link:hover,
+      .button:hover {
+        border-color: rgba(242, 238, 230, 0.46);
+        background: rgba(47, 191, 113, 0.16);
+        transform: translateY(-1px);
+      }
+
+      .button.primary {
+        border-color: rgba(47, 191, 113, 0.55);
+        background: rgba(47, 191, 113, 0.2);
+        color: #dff8e9;
+      }
+
+      .hero-content {
+        position: relative;
+        z-index: 2;
+        width: min(1180px, calc(100% - 48px));
+        margin: 0 auto;
+        padding: 120px 0 80px;
+      }
+
+      .eyebrow {
+        margin: 0 0 18px;
+        color: var(--green);
+        font-size: 0.78rem;
+        font-weight: 700;
+        text-transform: uppercase;
+      }
+
+      h1 {
+        max-width: 900px;
+        margin: 0;
+        color: var(--ink);
+        font-size: 5.5rem;
+        line-height: 0.98;
+        letter-spacing: 0;
+      }
+
+      .hero-copy {
+        max-width: 720px;
+        margin: 24px 0 0;
+        color: #d4cfc5;
+        font-size: 1.15rem;
+        line-height: 1.7;
+      }
+
+      .hero-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+        margin-top: 34px;
+      }
+
+      .signal-row {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 12px;
+        margin-top: 48px;
+        max-width: 920px;
+      }
+
+      .signal {
+        border-left: 2px solid var(--line);
+        padding: 0 0 0 14px;
+      }
+
+      .signal strong {
+        display: block;
+        color: var(--ink);
+        font-size: 1.25rem;
+        line-height: 1.2;
+      }
+
+      .signal span {
+        display: block;
+        margin-top: 8px;
+        color: var(--muted);
+        font-size: 0.78rem;
+        line-height: 1.5;
+      }
+
+      .section {
+        padding: 72px 24px;
+        border-top: 1px solid rgba(242, 238, 230, 0.08);
+      }
+
+      .section.alt {
+        background: #131512;
+      }
+
+      .wrap {
+        width: min(1180px, 100%);
+        margin: 0 auto;
+      }
+
+      .section-head {
+        display: grid;
+        grid-template-columns: minmax(0, 0.9fr) minmax(260px, 0.7fr);
+        gap: 48px;
+        align-items: end;
+        margin-bottom: 34px;
+      }
+
+      h2 {
+        margin: 0;
+        font-size: 2.25rem;
+        line-height: 1.15;
+        letter-spacing: 0;
+      }
+
+      .section-head p,
+      .body-copy {
+        margin: 0;
+        color: var(--muted);
+        font-size: 0.98rem;
+        line-height: 1.7;
+      }
+
+      .product-frame {
+        overflow: hidden;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: #10110f;
+        box-shadow: 0 24px 80px rgba(0, 0, 0, 0.36);
+      }
+
+      .product-frame img {
+        width: 100%;
+      }
+
+      .system-grid {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 14px;
+      }
+
+      .system-card {
+        min-height: 188px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: var(--panel);
+        padding: 22px;
+      }
+
+      .system-card .index {
+        color: var(--dim);
+        font-size: 0.72rem;
+        text-transform: uppercase;
+      }
+
+      .system-card h3 {
+        margin: 28px 0 12px;
+        color: var(--ink);
+        font-size: 1.05rem;
+        line-height: 1.35;
+      }
+
+      .system-card p {
+        margin: 0;
+        color: var(--muted);
+        font-size: 0.82rem;
+        line-height: 1.65;
+      }
+
+      .ledger {
+        display: grid;
+        grid-template-columns: minmax(0, 0.95fr) minmax(280px, 0.6fr);
+        gap: 18px;
+        align-items: stretch;
+      }
+
+      .balance-panel,
+      .star-panel {
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: var(--panel-strong);
+        padding: 24px;
+      }
+
+      .bars {
+        display: grid;
+        gap: 16px;
+        margin-top: 24px;
+      }
+
+      .bar-row {
+        display: grid;
+        grid-template-columns: 90px minmax(0, 1fr) 72px;
+        gap: 14px;
+        align-items: center;
+        color: var(--muted);
+        font-size: 0.8rem;
+      }
+
+      .track {
+        height: 12px;
+        overflow: hidden;
+        border-radius: 999px;
+        background: #292b26;
+      }
+
+      .fill {
+        height: 100%;
+        border-radius: inherit;
+      }
+
+      .fill.output {
+        width: 68%;
+        background: var(--green);
+      }
+
+      .fill.input {
+        width: 92%;
+        background: var(--blue);
+      }
+
+      .fill.visible {
+        width: 44%;
+        background: var(--amber);
+      }
+
+      .ratio {
+        margin: 0;
+        color: var(--ink);
+        font-size: 3rem;
+        line-height: 1;
+      }
+
+      .star-panel {
+        display: grid;
+        align-content: space-between;
+        gap: 18px;
+      }
+
+      .star-panel img {
+        width: 100%;
+        min-height: 220px;
+        object-fit: contain;
+        border-radius: 8px;
+        background: #ffffff;
+      }
+
+      footer {
+        padding: 34px 24px;
+        border-top: 1px solid rgba(242, 238, 230, 0.08);
+        color: var(--dim);
+      }
+
+      .footer-wrap {
+        width: min(1180px, 100%);
+        margin: 0 auto;
+        display: flex;
+        justify-content: space-between;
+        gap: 24px;
+        flex-wrap: wrap;
+        font-size: 0.8rem;
+      }
+
+      @media (max-width: 900px) {
+        .nav {
+          padding: 18px 20px;
+        }
+
+        .nav-links {
+          display: none;
+        }
+
+        .hero {
+          min-height: 84svh;
+        }
+
+        .hero-content {
+          width: min(100% - 32px, 680px);
+          padding-bottom: 56px;
+        }
+
+        h1 {
+          font-size: 3.5rem;
+        }
+
+        .hero-copy {
+          font-size: 1rem;
+        }
+
+        .signal-row,
+        .system-grid,
+        .section-head,
+        .ledger {
+          grid-template-columns: 1fr;
+        }
+      }
+
+      @media (max-width: 560px) {
+        h1 {
+          font-size: 2.75rem;
+        }
+
+        .hero-actions {
+          display: grid;
+        }
+
+        .button {
+          width: 100%;
+        }
+
+        .section {
+          padding: 54px 16px;
+        }
+
+        .bar-row {
+          grid-template-columns: 1fr;
+          gap: 8px;
+        }
+
+        .ratio {
+          font-size: 2.25rem;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <header class="hero">
+      <div class="hero-image" aria-hidden="true">
+        <img src="assets/dashboard-preview.png" alt="" />
+      </div>
+      <nav class="nav" aria-label="Primary">
+        <a class="brand" href="#">Human Tokens</a>
+        <div class="nav-links">
+          <a class="nav-link" href="#preview">Preview</a>
+          <a class="nav-link" href="#system">System</a>
+          <a class="nav-link" href="#stars">Stars</a>
+          <a class="nav-link" href="https://github.com/IAmUnbounded/human-tokens">GitHub</a>
+        </div>
+      </nav>
+      <div class="hero-content">
+        <p class="eyebrow">Local-first attention accounting</p>
+        <h1>Human Tokens</h1>
+        <p class="hero-copy">
+          A personal dashboard for measuring the balance between the tokens you produce and the tokens you
+          consume across coding, reading, AI chats, video, social feeds, and communication.
+        </p>
+        <div class="hero-actions">
+          <a class="button primary" href="https://github.com/IAmUnbounded/human-tokens">View repository</a>
+          <a class="button" href="#preview">See the dashboard</a>
+        </div>
+        <div class="signal-row" aria-label="Project signals">
+          <div class="signal">
+            <strong>Output</strong>
+            <span>Keystroke-derived creation estimates.</span>
+          </div>
+          <div class="signal">
+            <strong>Input</strong>
+            <span>Reading, media, AI, and visible text intake.</span>
+          </div>
+          <div class="signal">
+            <strong>Balance</strong>
+            <span>A live ratio that makes consumption visible.</span>
+          </div>
+          <div class="signal">
+            <strong>Local</strong>
+            <span>Designed around a personal SQLite ledger.</span>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <main>
+      <section class="section" id="preview">
+        <div class="wrap">
+          <div class="section-head">
+            <h2>The interface is the ledger.</h2>
+            <p>
+              Human Tokens turns everyday computer use into a readable account of attention: what you wrote,
+              what you read, what you watched, and where the day tilted.
+            </p>
+          </div>
+          <div class="product-frame">
+            <img src="assets/dashboard-preview.png" alt="Human Tokens dashboard preview" />
+          </div>
+        </div>
+      </section>
+
+      <section class="section alt" id="system">
+        <div class="wrap">
+          <div class="section-head">
+            <h2>What we are trying to make.</h2>
+            <p>
+              A small, honest instrumentation layer for humans: not surveillance, not productivity theater,
+              just enough signal to understand whether a session created more than it consumed.
+            </p>
+          </div>
+          <div class="system-grid">
+            <article class="system-card">
+              <span class="index">01 Tracker</span>
+              <h3>Observe active work locally.</h3>
+              <p>Track active apps, windows, idle time, categories, and keystroke-based output estimates.</p>
+            </article>
+            <article class="system-card">
+              <span class="index">02 Capture</span>
+              <h3>Estimate incoming text and media.</h3>
+              <p>Classify reading, AI, communication, video, social, and browser text into input tokens.</p>
+            </article>
+            <article class="system-card">
+              <span class="index">03 Dashboard</span>
+              <h3>Show the ratio in real time.</h3>
+              <p>Expose output, input, visible text, category mix, apps, sources, and daily timelines.</p>
+            </article>
+            <article class="system-card">
+              <span class="index">04 Reports</span>
+              <h3>Keep a daily memory.</h3>
+              <p>Generate concise reports that make attention patterns easier to review and improve.</p>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <section class="section" id="stars">
+        <div class="wrap">
+          <div class="ledger">
+            <div class="balance-panel">
+              <p class="eyebrow">Project metric</p>
+              <p class="ratio">output:input</p>
+              <p class="body-copy" style="margin-top: 18px">
+                The core idea is simple: humans also have context windows. The project gives that context a
+                visible shape so you can see when you are building, learning, skimming, or drifting.
+              </p>
+              <div class="bars" aria-label="Example token balance">
+                <div class="bar-row">
+                  <span>Output</span>
+                  <div class="track"><div class="fill output"></div></div>
+                  <span>68%</span>
+                </div>
+                <div class="bar-row">
+                  <span>Input</span>
+                  <div class="track"><div class="fill input"></div></div>
+                  <span>92%</span>
+                </div>
+                <div class="bar-row">
+                  <span>Visible</span>
+                  <div class="track"><div class="fill visible"></div></div>
+                  <span>44%</span>
+                </div>
+              </div>
+            </div>
+            <div class="star-panel">
+              <div>
+                <p class="eyebrow">Star history</p>
+                <p class="body-copy">Follow adoption as the repo evolves.</p>
+              </div>
+              <a href="https://star-history.com/#IAmUnbounded/human-tokens&amp;Date" aria-label="Open star history chart">
+                <picture>
+                  <source
+                    media="(prefers-color-scheme: dark)"
+                    srcset="https://api.star-history.com/svg?repos=IAmUnbounded/human-tokens&amp;type=Date&amp;theme=dark"
+                  />
+                  <source
+                    media="(prefers-color-scheme: light)"
+                    srcset="https://api.star-history.com/svg?repos=IAmUnbounded/human-tokens&amp;type=Date"
+                  />
+                  <img
+                    src="https://api.star-history.com/svg?repos=IAmUnbounded/human-tokens&amp;type=Date"
+                    alt="Star history chart for IAmUnbounded/human-tokens"
+                    loading="lazy"
+                  />
+                </picture>
+              </a>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer>
+      <div class="footer-wrap">
+        <span>Human Tokens</span>
+        <span>Local-first tracker for human input and output tokens.</span>
+      </div>
+    </footer>
+  </body>
+</html>

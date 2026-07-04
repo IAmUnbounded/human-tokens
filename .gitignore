@@ -1,0 +1,26 @@
+.DS_Store
+
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+
+# Node / Next.js
+node_modules/
+dashboard/node_modules/
+.next/
+dashboard/.next/
+dashboard/tsconfig.tsbuildinfo
+npm-debug.log*
+
+# Local runtime state
+data/*.db
+data/*.db.*
+logs/
+reports/*.md
+output/
+.playwright-cli/
+
+# Environment
+.env
+.env.*

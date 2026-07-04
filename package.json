@@ -1,0 +1,14 @@
+{
+  "name": "input-output-human-tokens",
+  "private": true,
+  "scripts": {
+    "dev": "cd dashboard && npm run dev",
+    "install:dashboard": "cd dashboard && npm install",
+    "seed": "./.venv/bin/python3 tracker/seed_demo.py",
+    "track": "./.venv/bin/python3 tracker/tracker.py",
+    "track:bg": "./scripts/start_background.sh",
+    "track:stop": "./scripts/stop_background.sh",
+    "report": "./.venv/bin/python3 tracker/report.py",
+    "report:week": "./.venv/bin/python3 tracker/report.py --period week"
+  }
+}
