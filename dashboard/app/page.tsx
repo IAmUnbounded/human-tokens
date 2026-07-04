@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Area,
   AreaChart,
@@ -247,6 +247,56 @@ function LiveIndicator({ app }: { app: NonNullable<Stats["currentApp"]> }) {
   );
 }
 
+function CategoryFilter({
+  categories,
+  totalSeconds,
+  selected,
+  onSelect,
+}: {
+  categories: CategoryStat[];
+  totalSeconds: number;
+  selected: string;
+  onSelect: (category: string) => void;
+}) {
+  const buttonClass = (active: boolean) =>
+    `h-9 shrink-0 rounded-md border px-3 text-xs font-medium transition-colors ${
+      active
+        ? "border-stone-500 bg-stone-700/40 text-stone-100"
+        : "border-surface-border text-stone-500 hover:border-stone-600 hover:text-stone-300"
+    }`;
+
+  return (
+    <div className="flex gap-2 overflow-x-auto pb-1">
+      <button
+        type="button"
+        aria-pressed={selected === "all"}
+        onClick={() => onSelect("all")}
+        className={buttonClass(selected === "all")}
+      >
+        All · {fmtTime(totalSeconds)}
+      </button>
+      {categories.map((category) => {
+        const color = CATEGORY_COLOR[category.category] ?? "#9ca3af";
+        const active = selected === category.category;
+
+        return (
+          <button
+            key={category.category}
+            type="button"
+            aria-pressed={active}
+            onClick={() => onSelect(category.category)}
+            className={`${buttonClass(active)} flex items-center gap-2`}
+          >
+            <span className="h-2 w-2 rounded-full" style={{ background: color }} />
+            <span>{CATEGORY_LABEL[category.category] ?? category.category}</span>
+            <span className="text-stone-500">{fmtTime(category.totalSeconds)}</span>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 function AppRow({ app, maxSeconds }: { app: AppStat; maxSeconds: number }) {
   const pct = maxSeconds > 0 ? (app.totalSeconds / maxSeconds) * 100 : 0;
   const color = CATEGORY_COLOR[app.category] ?? "#9ca3af";
@@ -257,13 +307,16 @@ function AppRow({ app, maxSeconds }: { app: AppStat; maxSeconds: number }) {
       ? `${app.app_name} · ${app.source_host}`
       : app.source_host
         ? app.app_name
-        : app.window_title || CATEGORY_LABEL[app.category] || app.category;
+        : app.window_title;
 
   return (
     <div className="grid grid-cols-[minmax(0,1fr)_70px_76px] items-center gap-x-3 gap-y-2 py-3 max-sm:grid-cols-[minmax(0,1fr)_72px]">
       <div className="min-w-0">
         <p className="truncate text-sm text-stone-200">{app.display_name}</p>
-        <p className="truncate text-[11px] text-stone-500">{detail}</p>
+        <div className="mt-1 flex min-w-0 items-center gap-2">
+          <CategoryBadge cat={app.category} />
+          {detail && <p className="min-w-0 truncate text-[11px] text-stone-500">{detail}</p>}
+        </div>
       </div>
       <p className="text-right text-xs text-stone-400">{fmtTime(app.totalSeconds)}</p>
       <p className="text-right text-xs" style={{ color: dominant === "out" ? "#2fbf71" : "#3aa7ff" }}>
@@ -404,6 +457,7 @@ export default function Dashboard() {
   const [period, setPeriod] = useState<"today" | "24h" | "week">("today");
   const [lastUpdate, setLastUpdate] = useState<Date | null>(null);
   const [trackerBusy, setTrackerBusy] = useState(false);
+  const [selectedCategory, setSelectedCategory] = useState("all");
 
   const fetchStats = useCallback(async () => {
     try {
@@ -457,6 +511,16 @@ export default function Dashboard() {
     return () => clearInterval(id);
   }, [fetchTracker]);
 
+  useEffect(() => {
+    if (
+      selectedCategory !== "all" &&
+      stats &&
+      !stats.categories.some((category) => category.category === selectedCategory)
+    ) {
+      setSelectedCategory("all");
+    }
+  }, [selectedCategory, stats]);
+
   const today = new Date().toLocaleDateString("en-US", {
     weekday: "long",
     month: "long",
@@ -488,6 +552,19 @@ export default function Dashboard() {
     Object.keys(stats.captureHealth.statusCounts).some((status) =>
       status.includes("javascript-events-disabled") || status.includes("javascript-blocked"),
     );
+  const filteredApps = useMemo(() => {
+    if (!stats) return [];
+    if (selectedCategory === "all") return stats.apps;
+    return stats.apps.filter((app) => app.category === selectedCategory);
+  }, [selectedCategory, stats]);
+  const visibleApps = filteredApps.slice(0, 15);
+  const filteredAppSeconds = filteredApps.reduce((sum, app) => sum + app.totalSeconds, 0);
+  const filteredInputTokens = filteredApps.reduce((sum, app) => sum + app.inputTokens, 0);
+  const filteredOutputTokens = filteredApps.reduce((sum, app) => sum + app.outputTokens, 0);
+  const selectedCategoryLabel =
+    selectedCategory === "all"
+      ? "All categories"
+      : CATEGORY_LABEL[selectedCategory] ?? selectedCategory;
 
   return (
     <main className="min-h-screen bg-surface px-4 py-5 text-stone-200 sm:px-6 lg:px-8">
@@ -682,15 +759,52 @@ export default function Dashboard() {
 
             <section className="grid gap-4 lg:grid-cols-[1fr_1fr]">
               <div className="rounded-lg border border-surface-border bg-surface-card p-5">
-                <div className="mb-3 flex items-center justify-between">
-                  <p className="text-[11px] uppercase tracking-[0.18em] text-stone-500">Apps And Sites</p>
-                  <p className="text-xs text-stone-500">{stats.apps.length} sources</p>
+                <div className="mb-4 flex flex-col gap-3">
+                  <div className="flex items-start justify-between gap-4">
+                    <div>
+                      <p className="text-[11px] uppercase tracking-[0.18em] text-stone-500">
+                        Apps And Sites
+                      </p>
+                      <p className="mt-1 text-xs text-stone-500">
+                        {selectedCategoryLabel} · {fmtTime(filteredAppSeconds)} spent
+                      </p>
+                    </div>
+                    <p className="shrink-0 text-right text-xs text-stone-500">
+                      {filteredApps.length} sources
+                      <span className="block">
+                        {fmt(filteredInputTokens)} in / {fmt(filteredOutputTokens)} out
+                      </span>
+                    </p>
+                  </div>
+                  <CategoryFilter
+                    categories={stats.categories}
+                    totalSeconds={stats.totalSeconds}
+                    selected={selectedCategory}
+                    onSelect={setSelectedCategory}
+                  />
                 </div>
-                <div className="divide-y divide-surface-border">
-                  {stats.apps.map((app) => (
-                    <AppRow key={app.key} app={app} maxSeconds={stats.apps[0]?.totalSeconds ?? 0} />
-                  ))}
-                </div>
+                {visibleApps.length > 0 ? (
+                  <>
+                    <div className="divide-y divide-surface-border">
+                      {visibleApps.map((app) => (
+                        <AppRow
+                          key={app.key}
+                          app={app}
+                          maxSeconds={visibleApps[0]?.totalSeconds ?? 0}
+                        />
+                      ))}
+                    </div>
+                    {filteredApps.length > visibleApps.length && (
+                      <p className="mt-3 text-xs text-stone-500">
+                        Showing top {visibleApps.length} of {filteredApps.length} sources in this filter.
+                      </p>
+                    )}
+                  </>
+                ) : (
+                  <div className="rounded-md border border-dashed border-surface-border p-4 text-sm text-stone-500">
+                    No app activity in this category for the selected period.
+                  </div>
+                )}
               </div>
 
               <div className="rounded-lg border border-surface-border bg-surface-card p-5">

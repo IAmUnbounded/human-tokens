@@ -390,8 +390,7 @@ export function getStats(periodStart: number, periodEnd: number): StatsResult {
   );
 
   const apps = Array.from(appMap.values())
-    .sort((a, b) => b.totalSeconds - a.totalSeconds)
-    .slice(0, 15);
+    .sort((a, b) => b.totalSeconds - a.totalSeconds);
 
   const categories = Array.from(categoryMap.values()).sort(
     (a, b) => b.totalSeconds - a.totalSeconds,
