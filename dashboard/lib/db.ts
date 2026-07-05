@@ -112,8 +112,47 @@ const CONSUMING_CATEGORIES = new Set([
   "ai",
 ]);
 
+const parsedBrowserCreatingOutputTokenThreshold = Number.parseInt(
+  process.env.HUMAN_TOKENS_BROWSER_CREATING_OUTPUT_TOKEN_THRESHOLD ?? "8",
+  10,
+);
+const BROWSER_CREATING_OUTPUT_TOKEN_THRESHOLD = Number.isFinite(
+  parsedBrowserCreatingOutputTokenThreshold,
+)
+  ? parsedBrowserCreatingOutputTokenThreshold
+  : 8;
+const WRITING_HOSTS = new Set(["docs.google.com"]);
+const WRITING_TITLE_MARKERS = [" - google docs", " - google sheets", " - google slides"];
+
 function numberValue(value: number | null | undefined) {
   return typeof value === "number" && Number.isFinite(value) ? value : 0;
+}
+
+function hostMatches(host: string, candidates: Set<string>) {
+  return Array.from(candidates).some(
+    (candidate) => host === candidate || host.endsWith(`.${candidate}`),
+  );
+}
+
+function isBrowserWritingSurface(sourceHost: string, windowTitle: string) {
+  const host = sourceHost.toLowerCase();
+  const title = windowTitle.toLowerCase();
+  return (
+    hostMatches(host, WRITING_HOSTS) ||
+    WRITING_TITLE_MARKERS.some((marker) => title.includes(marker))
+  );
+}
+
+function effectiveCategory(session: SessionRow, tokens: { outputTokens: number }) {
+  if (
+    session.category === "reading" &&
+    tokens.outputTokens >= BROWSER_CREATING_OUTPUT_TOKEN_THRESHOLD &&
+    isBrowserWritingSurface(session.source_host ?? "", cleanTitle(session.window_title))
+  ) {
+    return "creating";
+  }
+
+  return session.category;
 }
 
 function computeLegacyTokens(category: string, durationSeconds: number, keystrokes: number) {
@@ -243,7 +282,7 @@ export function getStats(periodStart: number, periodEnd: number): StatsResult {
     .all(periodStart, periodEnd) as SessionRow[];
 
   const liveColumns = ["app_name", "category", "started_at"].concat(
-    ["source_host", "window_title"].filter((column) => sessionColumns.has(column)),
+    ["source_host", "window_title", "output_tokens"].filter((column) => sessionColumns.has(column)),
   );
   const live = db
     .prepare(
@@ -261,6 +300,7 @@ export function getStats(periodStart: number, periodEnd: number): StatsResult {
         started_at: number;
         source_host?: string | null;
         window_title?: string | null;
+        output_tokens?: number | null;
       }
     | undefined;
 
@@ -315,7 +355,8 @@ export function getStats(periodStart: number, periodEnd: number): StatsResult {
     const tokens = computeSessionTokens(session);
     const host = session.source_host ?? "";
     const windowTitle = cleanTitle(session.window_title);
-    const appKey = `${session.app_name}|${host}|${windowTitle}|${session.category}`;
+    const category = effectiveCategory(session, tokens);
+    const appKey = `${session.app_name}|${host}|${windowTitle}|${category}`;
     const displayName = windowTitle || host || session.app_name;
 
     outputTokens += tokens.outputTokens;
@@ -327,19 +368,19 @@ export function getStats(periodStart: number, periodEnd: number): StatsResult {
     captureCount += numberValue(session.capture_count);
 
     if (session.last_capture_status) lastCaptureStatus = session.last_capture_status;
-    if (session.category === "creating") productiveSeconds += duration;
-    if (CONSUMING_CATEGORIES.has(session.category)) {
+    if (category === "creating") productiveSeconds += duration;
+    if (CONSUMING_CATEGORIES.has(category)) {
       consumingSeconds += duration;
     }
 
-    const existingCategory = categoryMap.get(session.category);
+    const existingCategory = categoryMap.get(category);
     if (existingCategory) {
       existingCategory.totalSeconds += duration;
       existingCategory.inputTokens += tokens.inputTokens;
       existingCategory.outputTokens += tokens.outputTokens;
     } else {
-      categoryMap.set(session.category, {
-        category: session.category,
+      categoryMap.set(category, {
+        category,
         totalSeconds: duration,
         inputTokens: tokens.inputTokens,
         outputTokens: tokens.outputTokens,
@@ -361,7 +402,7 @@ export function getStats(periodStart: number, periodEnd: number): StatsResult {
         display_name: displayName,
         window_title: windowTitle,
         source_host: host,
-        category: session.category,
+        category,
         totalSeconds: duration,
         keystrokes,
         outputTokens: tokens.outputTokens,
@@ -400,12 +441,29 @@ export function getStats(periodStart: number, periodEnd: number): StatsResult {
 
   const liveHost = live?.source_host ?? "";
   const liveTitle = cleanTitle(live?.window_title);
+  const liveCategory = live
+    ? effectiveCategory(
+        {
+          id: 0,
+          started_at: live.started_at,
+          ended_at: null,
+          app_name: live.app_name,
+          window_title: liveTitle,
+          category: live.category,
+          keystrokes: 0,
+          duration_seconds: 0,
+          source_host: liveHost,
+          output_tokens: live.output_tokens,
+        },
+        { outputTokens: numberValue(live.output_tokens) },
+      )
+    : "";
   const currentApp = live
     ? {
         app_name: live.app_name,
         display_name: liveTitle || liveHost || live.app_name,
         window_title: liveTitle,
-        category: live.category,
+        category: liveCategory,
         source_host: liveHost,
         seconds: Math.floor(Date.now() / 1000) - live.started_at,
       }

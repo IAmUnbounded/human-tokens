@@ -183,6 +183,9 @@ EFFECTIVE_WORK_RECENT_INPUT_SECONDS = int(
 PREMIERE_OUTPUT_TOKENS_PER_MINUTE = float(
     os.environ.get("HUMAN_TOKENS_PREMIERE_OUTPUT_TOKENS_PER_MINUTE", "80")
 )
+BROWSER_CREATING_OUTPUT_TOKEN_THRESHOLD = int(
+    os.environ.get("HUMAN_TOKENS_BROWSER_CREATING_OUTPUT_TOKEN_THRESHOLD", "8")
+)
 
 PREMIERE_APPS = {
     "Adobe Premiere",
@@ -355,6 +358,16 @@ SOCIAL_HOSTS = {
     "news.ycombinator.com",
     "threads.net",
 }
+
+WRITING_HOSTS = {
+    "docs.google.com",
+}
+
+WRITING_TITLE_MARKERS = (
+    " - google docs",
+    " - google sheets",
+    " - google slides",
+)
 
 VISUAL_SOCIAL_HOSTS = {
     "instagram.com",
@@ -579,6 +592,16 @@ def host_matches(host: str, candidates: set[str]) -> bool:
 
 def app_matches(app_name: str, candidates: set[str]) -> bool:
     return any(app_name == candidate or app_name.startswith(candidate + " ") for candidate in candidates)
+
+
+def is_browser_writing_surface(source_url: str, window_title: str) -> bool:
+    host = host_from_url(source_url)
+    title = window_title.lower()
+    if host_matches(host, WRITING_HOSTS):
+        path = urlparse(source_url).path.lower()
+        if path.startswith(("/document/", "/spreadsheets/", "/presentation/")):
+            return True
+    return any(marker in title for marker in WRITING_TITLE_MARKERS)
 
 
 def effective_output_rate(app_name: str, category: str) -> float:
@@ -1138,6 +1161,21 @@ def main() -> None:
         source_host = host_from_url(source_url)
         title = browser_ctx.title or window_title
         category = classify(app, title, source_url)
+        if (
+            category == "reading"
+            and app in BROWSER_APPS
+            and is_browser_writing_surface(source_url, title)
+        ):
+            same_surface = (
+                current is not None
+                and current.app == app
+                and current.source_host == source_host
+                and current.title == title
+            )
+            existing_output = current.output_tokens if same_surface else 0
+            projected_output = existing_output + round(ks * 0.25)
+            if ks > 0 or projected_output >= BROWSER_CREATING_OUTPUT_TOKEN_THRESHOLD:
+                category = "creating"
         if category == "other" and ks > 5:
             category = "creating"
 

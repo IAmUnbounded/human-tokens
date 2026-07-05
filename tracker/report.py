@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import datetime as dt
+import os
 import sqlite3
 from pathlib import Path
 
@@ -26,6 +27,15 @@ TOKEN_RATES: dict[str, tuple[int, int]] = {
 }
 
 CONSUMING_CATEGORIES = {"reading", "video", "social", "communication", "ai"}
+BROWSER_CREATING_OUTPUT_TOKEN_THRESHOLD = int(
+    os.environ.get("HUMAN_TOKENS_BROWSER_CREATING_OUTPUT_TOKEN_THRESHOLD", "8")
+)
+WRITING_HOSTS = {"docs.google.com"}
+WRITING_TITLE_MARKERS = (
+    " - google docs",
+    " - google sheets",
+    " - google slides",
+)
 
 
 def local_today() -> str:
@@ -80,6 +90,33 @@ def legacy_tokens(category: str, duration: int, keystrokes: int) -> tuple[int, i
     output = round(keystrokes * 0.25)
     input_ = round(input_rate * (duration / 60))
     return output, input_
+
+
+def host_matches(host: str, candidates: set[str]) -> bool:
+    return any(host == candidate or host.endswith("." + candidate) for candidate in candidates)
+
+
+def is_browser_writing_surface(source_host: str, window_title: str) -> bool:
+    host = source_host.lower()
+    title = window_title.lower()
+    return host_matches(host, WRITING_HOSTS) or any(
+        marker in title for marker in WRITING_TITLE_MARKERS
+    )
+
+
+def effective_category(
+    category: str,
+    source_host: str,
+    window_title: str,
+    output_tokens: int,
+) -> str:
+    if (
+        category == "reading"
+        and output_tokens >= BROWSER_CREATING_OUTPUT_TOKEN_THRESHOLD
+        and is_browser_writing_surface(source_host, window_title)
+    ):
+        return "creating"
+    return category
 
 
 def write_daily_report(
@@ -208,10 +245,16 @@ def write_range_report(
             rate_input = input_tokens
             capture_count = 0
 
-        app_key = str(row["app_name"])
-        category = str(row["category"])
         host = str(row["source_host"] or "") if session_has_source else ""
+        app_key = str(row["app_name"])
+        category = effective_category(
+            str(row["category"]),
+            host,
+            str(row["window_title"] or ""),
+            output_tokens,
+        )
         label = f"{app_key} ({host})" if host else app_key
+        app_group_key = f"{label}|{category}"
 
         totals["input"] += input_tokens
         totals["output"] += output_tokens
@@ -225,8 +268,8 @@ def write_range_report(
         if category in CONSUMING_CATEGORIES:
             totals["consuming"] += duration
 
-        if label not in by_app:
-            by_app[label] = {
+        if app_group_key not in by_app:
+            by_app[app_group_key] = {
                 "label": label,
                 "category": category,
                 "duration": 0,
@@ -234,10 +277,10 @@ def write_range_report(
                 "output": 0,
                 "keystrokes": 0,
             }
-        by_app[label]["duration"] = int(by_app[label]["duration"]) + duration
-        by_app[label]["input"] = int(by_app[label]["input"]) + input_tokens
-        by_app[label]["output"] = int(by_app[label]["output"]) + output_tokens
-        by_app[label]["keystrokes"] = int(by_app[label]["keystrokes"]) + keystrokes
+        by_app[app_group_key]["duration"] = int(by_app[app_group_key]["duration"]) + duration
+        by_app[app_group_key]["input"] = int(by_app[app_group_key]["input"]) + input_tokens
+        by_app[app_group_key]["output"] = int(by_app[app_group_key]["output"]) + output_tokens
+        by_app[app_group_key]["keystrokes"] = int(by_app[app_group_key]["keystrokes"]) + keystrokes
 
         if category not in by_category:
             by_category[category] = {"duration": 0, "input": 0, "output": 0}
