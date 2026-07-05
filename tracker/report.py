@@ -19,7 +19,7 @@ TOKEN_RATES: dict[str, tuple[int, int]] = {
     "creating": (0, 5),
     "reading": (0, 200),
     "ai": (0, 150),
-    "video": (0, 180),
+    "video": (0, 0),
     "social": (0, 120),
     "communication": (0, 75),
     "other": (0, 0),
@@ -30,6 +30,8 @@ CONSUMING_CATEGORIES = {"reading", "video", "social", "communication", "ai"}
 BROWSER_CREATING_OUTPUT_TOKEN_THRESHOLD = int(
     os.environ.get("HUMAN_TOKENS_BROWSER_CREATING_OUTPUT_TOKEN_THRESHOLD", "8")
 )
+IMAGE_INPUT_TOKENS = float(os.environ.get("HUMAN_TOKENS_IMAGE_INPUT_TOKENS", "1024"))
+VIDEO_FPS = float(os.environ.get("HUMAN_TOKENS_VIDEO_FPS", "30"))
 WRITING_HOSTS = {"docs.google.com"}
 WRITING_TITLE_MARKERS = (
     " - google docs",
@@ -85,10 +87,17 @@ def has_table(conn: sqlite3.Connection, table: str) -> bool:
     return row is not None
 
 
-def legacy_tokens(category: str, duration: int, keystrokes: int) -> tuple[int, int]:
+def time_input_tokens(category: str, duration: int | float) -> int:
+    if category == "video":
+        return round(max(0, duration) * VIDEO_FPS * IMAGE_INPUT_TOKENS)
+
     _output_rate, input_rate = TOKEN_RATES.get(category, (0, 0))
+    return round(input_rate * (max(0, duration) / 60))
+
+
+def legacy_tokens(category: str, duration: int, keystrokes: int) -> tuple[int, int]:
     output = round(keystrokes * 0.25)
-    input_ = round(input_rate * (duration / 60))
+    input_ = time_input_tokens(category, duration)
     return output, input_
 
 
@@ -253,6 +262,9 @@ def write_range_report(
             str(row["window_title"] or ""),
             output_tokens,
         )
+        if category == "video":
+            rate_input = time_input_tokens(category, duration)
+            input_tokens = text_input + rate_input
         label = f"{app_key} ({host})" if host else app_key
         app_group_key = f"{label}|{category}"
 
@@ -322,7 +334,7 @@ def write_range_report(
         f"- Consuming time: {fmt_time(totals['consuming'])}",
         f"- Keystrokes: {int(totals['keystrokes']):,}",
         f"- Visible text input: {fmt_tokens(totals['text_input'])}",
-        f"- Time-based input: {fmt_tokens(totals['rate_input'])}",
+        f"- Time/media input: {fmt_tokens(totals['rate_input'])}",
         "",
         "## Category Mix",
         "",

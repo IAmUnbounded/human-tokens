@@ -164,7 +164,7 @@ TOKEN_RATES: dict[str, tuple[int, int]] = {
     "creating": (0, 5),
     "reading": (0, 200),
     "ai": (0, 150),
-    "video": (0, 180),
+    "video": (0, 0),
     "social": (0, 120),
     "communication": (0, 75),
     "other": (0, 0),
@@ -186,6 +186,8 @@ PREMIERE_OUTPUT_TOKENS_PER_MINUTE = float(
 BROWSER_CREATING_OUTPUT_TOKEN_THRESHOLD = int(
     os.environ.get("HUMAN_TOKENS_BROWSER_CREATING_OUTPUT_TOKEN_THRESHOLD", "8")
 )
+IMAGE_INPUT_TOKENS = float(os.environ.get("HUMAN_TOKENS_IMAGE_INPUT_TOKENS", "1024"))
+VIDEO_FPS = float(os.environ.get("HUMAN_TOKENS_VIDEO_FPS", "30"))
 
 PREMIERE_APPS = {
     "Adobe Premiere",
@@ -625,6 +627,14 @@ def effective_output_rate(app_name: str, category: str) -> float:
     if app_matches(app_name, PREMIERE_APPS):
         return PREMIERE_OUTPUT_TOKENS_PER_MINUTE
     return 0.0
+
+
+def time_input_tokens(category: str, seconds: int | float) -> float:
+    if category == "video":
+        return max(0.0, seconds) * VIDEO_FPS * IMAGE_INPUT_TOKENS
+
+    _output_rate, input_rate = TOKEN_RATES.get(category, (0, 0))
+    return input_rate * (max(0.0, seconds) / 60)
 
 
 def system_events_frontmost_app() -> str:
@@ -1220,6 +1230,7 @@ def print_startup() -> None:
             else "disabled"
         )
     )
+    print(f"  media input   : video at {VIDEO_FPS:g} fps × {IMAGE_INPUT_TOKENS:g} tokens/image")
     print("  terminal ai   : detects active Codex / Claude Code tabs in Terminal")
     print("  browser text  : via browser Automation permission when available")
     print("  stop          : Ctrl+C")
@@ -1389,8 +1400,7 @@ def main() -> None:
                 current.text_input_tokens += gained
 
         if should_apply_time_input(current, now):
-            _output_rate, input_rate = TOKEN_RATES.get(current.category, (0, 0))
-            current.rate_input_float += input_rate * (POLL_INTERVAL / 60)
+            current.rate_input_float += time_input_tokens(current.category, POLL_INTERVAL)
             current.rate_input_tokens = int(round(current.rate_input_float))
 
         current.input_tokens = current.text_input_tokens + current.rate_input_tokens

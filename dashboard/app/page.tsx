@@ -73,6 +73,10 @@ type Stats = {
     source_host: string;
     seconds: number;
   } | null;
+  mediaSettings: {
+    imageInputTokens: number;
+    videoFps: number;
+  };
   dbExists: boolean;
 };
 
@@ -87,6 +91,10 @@ function fmt(n: number) {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
   if (n >= 1_000) return `${(n / 1_000).toFixed(1)}k`;
   return String(Math.round(n));
+}
+
+function fmtExact(n: number) {
+  return n.toLocaleString("en-US", { maximumFractionDigits: 2 });
 }
 
 function fmtTime(s: number) {
@@ -673,7 +681,9 @@ export default function Dashboard() {
                 <StatCard
                   label="Media Estimate"
                   value={fmt(stats.rateInputTokens)}
-                  sub="time based"
+                  sub={`${fmtExact(stats.mediaSettings.videoFps)} fps · ${fmtExact(
+                    stats.mediaSettings.imageInputTokens,
+                  )}/image`}
                   color="#e25545"
                 />
                 <StatCard

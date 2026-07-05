@@ -38,6 +38,26 @@ View > Developer > Allow JavaScript from Apple Events
 
 The tracker can still record browser app, tab title, and URL without this setting, but page text tokens require it.
 
+## Media Input Tokens
+
+Image input should be counted the way the target LLM counts the image. For video, Human Tokens treats the stream as images and estimates input as:
+
+```text
+seconds × HUMAN_TOKENS_VIDEO_FPS × HUMAN_TOKENS_IMAGE_INPUT_TOKENS
+```
+
+Defaults:
+
+```bash
+HUMAN_TOKENS_VIDEO_FPS=30
+HUMAN_TOKENS_IMAGE_INPUT_TOKENS=1024
+```
+
+The `1024` image default matches OpenAI's patch-based 1024x1024 image example before model multipliers.
+Exact image token billing varies by model, detail level, and dimensions, so set
+`HUMAN_TOKENS_IMAGE_INPUT_TOKENS` to the actual token cost for the image input you want to model.
+See the [OpenAI image input token docs](https://developers.openai.com/api/docs/guides/images-vision#calculating-costs).
+
 ## Effective Work Output
 
 Mouse-heavy creative work can produce output even when keystrokes are low. The tracker now counts active Premiere Pro editing time as output tokens when there has been recent keyboard or mouse input.

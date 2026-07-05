@@ -90,6 +90,10 @@ export type StatsResult = {
     source_host: string;
     seconds: number;
   } | null;
+  mediaSettings: {
+    imageInputTokens: number;
+    videoFps: number;
+  };
   dbExists: boolean;
 };
 
@@ -97,7 +101,7 @@ const TOKEN_RATES: Record<string, [number, number]> = {
   creating: [0, 5],
   reading: [0, 200],
   ai: [0, 150],
-  video: [0, 180],
+  video: [0, 0],
   social: [0, 120],
   communication: [0, 75],
   other: [0, 0],
@@ -123,6 +127,12 @@ const BROWSER_CREATING_OUTPUT_TOKEN_THRESHOLD = Number.isFinite(
   : 8;
 const WRITING_HOSTS = new Set(["docs.google.com"]);
 const WRITING_TITLE_MARKERS = [" - google docs", " - google sheets", " - google slides"];
+const parsedImageInputTokens = Number.parseFloat(
+  process.env.HUMAN_TOKENS_IMAGE_INPUT_TOKENS ?? "1024",
+);
+const parsedVideoFps = Number.parseFloat(process.env.HUMAN_TOKENS_VIDEO_FPS ?? "30");
+const IMAGE_INPUT_TOKENS = Number.isFinite(parsedImageInputTokens) ? parsedImageInputTokens : 1024;
+const VIDEO_FPS = Number.isFinite(parsedVideoFps) ? parsedVideoFps : 30;
 
 function numberValue(value: number | null | undefined) {
   return typeof value === "number" && Number.isFinite(value) ? value : 0;
@@ -155,28 +165,51 @@ function effectiveCategory(session: SessionRow, tokens: { outputTokens: number }
   return session.category;
 }
 
-function computeLegacyTokens(category: string, durationSeconds: number, keystrokes: number) {
+function timeInputTokens(category: string, durationSeconds: number) {
+  if (category === "video") {
+    return Math.round(Math.max(0, durationSeconds) * VIDEO_FPS * IMAGE_INPUT_TOKENS);
+  }
+
   const [, inputRate] = TOKEN_RATES[category] ?? [0, 0];
+  return Math.round(inputRate * (Math.max(0, durationSeconds) / 60));
+}
+
+function computeLegacyTokens(category: string, durationSeconds: number, keystrokes: number) {
+  const rateInputTokens = timeInputTokens(category, durationSeconds);
   return {
     outputTokens: Math.round(keystrokes * 0.25),
-    inputTokens: Math.round(inputRate * (durationSeconds / 60)),
+    inputTokens: rateInputTokens,
     textInputTokens: 0,
-    rateInputTokens: Math.round(inputRate * (durationSeconds / 60)),
+    rateInputTokens,
   };
 }
 
 function computeSessionTokens(session: SessionRow) {
+  const duration = numberValue(session.duration_seconds);
+  const storedOutputTokens = numberValue(session.output_tokens);
+  const storedTextInputTokens = numberValue(session.text_input_tokens);
+
+  if (session.category === "video") {
+    const rateInputTokens = timeInputTokens(session.category, duration);
+    return {
+      outputTokens: storedOutputTokens || Math.round(numberValue(session.keystrokes) * 0.25),
+      inputTokens: storedTextInputTokens + rateInputTokens,
+      textInputTokens: storedTextInputTokens,
+      rateInputTokens,
+    };
+  }
+
   const storedSignal =
     numberValue(session.input_tokens) +
-    numberValue(session.output_tokens) +
-    numberValue(session.text_input_tokens) +
+    storedOutputTokens +
+    storedTextInputTokens +
     numberValue(session.rate_input_tokens);
 
   if (storedSignal > 0) {
     return {
-      outputTokens: numberValue(session.output_tokens),
+      outputTokens: storedOutputTokens,
       inputTokens: numberValue(session.input_tokens),
-      textInputTokens: numberValue(session.text_input_tokens),
+      textInputTokens: storedTextInputTokens,
       rateInputTokens: numberValue(session.rate_input_tokens),
     };
   }
@@ -235,6 +268,10 @@ function emptyStats(dbExists: boolean): StatsResult {
       statusCounts: {},
     },
     currentApp: null,
+    mediaSettings: {
+      imageInputTokens: IMAGE_INPUT_TOKENS,
+      videoFps: VIDEO_FPS,
+    },
     dbExists,
   };
 }
@@ -490,6 +527,10 @@ export function getStats(periodStart: number, periodEnd: number): StatsResult {
       statusCounts,
     },
     currentApp,
+    mediaSettings: {
+      imageInputTokens: IMAGE_INPUT_TOKENS,
+      videoFps: VIDEO_FPS,
+    },
     dbExists: true,
   };
 }
