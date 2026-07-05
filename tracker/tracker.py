@@ -195,7 +195,12 @@ PREMIERE_APPS = {
 
 AI_APPS = {
     "Claude",
+    "Claude Code",
+    "Claude Desktop",
+    "Claude Helper",
     "ChatGPT",
+    "Codex",
+    "OpenAI Codex",
     "Ollama",
     "LM Studio",
     "GitHub Copilot",
@@ -285,6 +290,16 @@ BROWSER_APPS = {
     "Microsoft Edge",
     "Opera",
     "Vivaldi",
+}
+
+TERMINAL_APPS = {
+    "Terminal",
+    "iTerm2",
+    "Warp",
+    "Ghostty",
+    "Alacritty",
+    "kitty",
+    "Hyper",
 }
 
 APPLESCRIPT_BROWSER_NAME = {
@@ -612,10 +627,55 @@ def effective_output_rate(app_name: str, category: str) -> float:
     return 0.0
 
 
+def system_events_frontmost_app() -> str:
+    try:
+        proc = subprocess.run(
+            [
+                "osascript",
+                "-e",
+                'tell application "System Events" to get name of first application process whose frontmost is true',
+            ],
+            text=True,
+            capture_output=True,
+            timeout=1.5,
+            check=False,
+        )
+    except Exception:
+        return ""
+    if proc.returncode != 0:
+        return ""
+    return proc.stdout.strip()
+
+
+def quartz_frontmost_window() -> tuple[str, str]:
+    if not SCREEN_RECORDING:
+        return "", ""
+    try:
+        windows = CGWindowListCopyWindowInfo(
+            kCGWindowListOptionOnScreenOnly, kCGNullWindowID
+        )
+    except Exception:
+        return "", ""
+
+    ignored = {"loginwindow", "ScreenSaverEngine", "Window Server"}
+    for window in windows:
+        owner = window.get(kCGWindowOwnerName) or ""
+        if not owner or owner in ignored or window.get(kCGWindowLayer) != 0:
+            continue
+        return owner, window.get(kCGWindowName) or ""
+    return "", ""
+
+
 def get_active_window() -> tuple[str, str]:
     try:
         app = _ws.frontmostApplication()
         app_name = app.localizedName() or "unknown"
+        if app_name in {"loginwindow", "ScreenSaverEngine", "unknown"}:
+            app_name = system_events_frontmost_app() or app_name
+        if app_name in {"loginwindow", "ScreenSaverEngine", "unknown"}:
+            fallback_app, fallback_title = quartz_frontmost_window()
+            if fallback_app:
+                return fallback_app, fallback_title
 
         title = ""
         if SCREEN_RECORDING:
@@ -661,6 +721,76 @@ def run_osascript(script: str, timeout: float = 4.0) -> tuple[bool, str]:
         msg = (proc.stderr or proc.stdout or "").strip()
         return False, msg[:240] or f"exit-{proc.returncode}"
     return True, proc.stdout.strip()
+
+
+def terminal_ai_label(processes: list[str], window_title: str) -> str | None:
+    haystack = " ".join([window_title, *processes]).lower()
+    if re.search(r"(^|[^a-z0-9_-])codex([^a-z0-9_-]|$)", haystack):
+        return "Codex"
+    if re.search(r"(^|[^a-z0-9_-])claude([^a-z0-9_-]|$)", haystack) or "claude-code" in haystack:
+        return "Claude Code"
+    return None
+
+
+def process_table_terminal_ai_label(window_title: str) -> str | None:
+    try:
+        proc = subprocess.run(
+            ["ps", "-axo", "tty=,comm=,args="],
+            text=True,
+            capture_output=True,
+            timeout=1.5,
+            check=False,
+        )
+    except Exception:
+        return terminal_ai_label([], window_title)
+    if proc.returncode != 0:
+        return terminal_ai_label([], window_title)
+
+    terminal_processes: list[str] = []
+    for line in proc.stdout.splitlines():
+        parts = line.strip().split(maxsplit=2)
+        if len(parts) < 2 or parts[0] == "??":
+            continue
+        terminal_processes.append(line)
+
+    return terminal_ai_label(terminal_processes, window_title)
+
+
+def capture_terminal_ai_context(app_name: str, window_title: str) -> tuple[str, str] | None:
+    if app_name not in TERMINAL_APPS:
+        return None
+
+    title = window_title
+    processes: list[str] = []
+
+    if app_name == "Terminal":
+        ok, output = run_osascript(
+            """
+tell application "Terminal"
+    if not (exists front window) then return ""
+    set tabProcesses to processes of selected tab of front window
+    set oldDelimiters to AppleScript's text item delimiters
+    set AppleScript's text item delimiters to ","
+    set processText to tabProcesses as text
+    set AppleScript's text item delimiters to oldDelimiters
+    return (name of front window) & linefeed & processText
+end tell
+""",
+            timeout=2.0,
+        )
+        if ok and output:
+            lines = output.splitlines()
+            if lines:
+                title = lines[0].strip() or title
+            if len(lines) > 1:
+                processes = [part.strip() for part in lines[1].split(",") if part.strip()]
+
+    label = terminal_ai_label(processes, title)
+    if not label:
+        label = process_table_terminal_ai_label(title)
+    if not label:
+        return None
+    return label, title
 
 
 def browser_script(app_name: str, include_text: bool) -> str | None:
@@ -1090,6 +1220,7 @@ def print_startup() -> None:
             else "disabled"
         )
     )
+    print("  terminal ai   : detects active Codex / Claude Code tabs in Terminal")
     print("  browser text  : via browser Automation permission when available")
     print("  stop          : Ctrl+C")
     print()
@@ -1131,6 +1262,9 @@ def main() -> None:
 
         app, window_title = get_active_window()
         ks = pop_keystrokes()
+        terminal_ai_context = capture_terminal_ai_context(app, window_title)
+        if terminal_ai_context:
+            app, window_title = terminal_ai_context
 
         if app in {"loginwindow", "ScreenSaverEngine", "unknown"}:
             if current:
